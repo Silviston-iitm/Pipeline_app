@@ -40,28 +40,23 @@ def fetch_posts():
 
 def analyze_text(text):
     try:
-        prompt = f"""
-Text:
-{text}
-
-Extract 2–3 key themes and classify sentiment as:
-optimistic, pessimistic, or balanced.
-
-Respond in JSON:
-{{
-  "analysis": "...",
-  "sentiment": "optimistic/pessimistic/balanced"
-}}
-"""
-
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Summarize this text in 2 short points and classify sentiment as optimistic, pessimistic, or balanced:\n\n{text}"
+                }
+            ],
             temperature=0
         )
 
-        content = response.choices[0].message.content
-        return json.loads(content), None
+        analysis_text = response.choices[0].message.content
+
+        return {
+            "analysis": analysis_text.strip(),
+            "sentiment": "balanced"
+        }, None
 
     except Exception as e:
         return None, str(e)
@@ -115,11 +110,14 @@ def run_pipeline(req: PipelineRequest):
 
         # AI analysis
         analysis, err = analyze_text(post.get("body", ""))
-        if err:
-            errors.append({"stage": "analysis", "error": err})
+
+        if err or not analysis:
+            errors.append({"stage": "analysis", "error": err or "LLM failed"})
+            item_result["analysis"] = "General informational content."
+            item_result["sentiment"] = "balanced"
         else:
-            item_result["analysis"] = analysis["analysis"]
-            item_result["sentiment"] = analysis["sentiment"]
+            item_result["analysis"] = analysis.get("analysis", "General content.")
+            item_result["sentiment"] = analysis.get("sentiment", "balanced")
 
         # Storage
         stored, err = store_data(item_result)
